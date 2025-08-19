@@ -1,0 +1,18 @@
+POST http://localhost:11431/api/generate
+Content-Type: application/json
+
+{
+  "model": "gemma3:4b-it-q4_K_M",
+  "prompt": "Give me lyrics for Bohemian Rhapsody",
+  "stream": false,
+  "options": {
+    "num_predict": 100,
+    "temperature": 0.7,
+    "top_k": 48,
+    "top_p": 0.9,
+    "repeat_penalty": 1.1
+  }
+}
+
+###
+
