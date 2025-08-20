@@ -1,15 +1,22 @@
 package com.example.llmchat.controller
 
 import com.example.llmchat.service.ChatService
+import jakarta.validation.ConstraintViolationException
+import jakarta.validation.constraints.NotBlank
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Controller
 import org.springframework.ui.ModelMap
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 
 @Controller
+@Validated
 class ChatController(private val chatService: ChatService) {
 
     @GetMapping("/")
@@ -36,4 +43,27 @@ class ChatController(private val chatService: ChatService) {
         chatService.deleteChat(chatId)
         return "redirect:/"
     }
+
+    @PostMapping("/chat/{chatId}/entry")
+    fun talkToModel(
+        @PathVariable chatId: String,
+        @RequestParam @NotBlank(message = "Prompt must not be empty") prompt: String
+    ): String {
+        chatService.processInteraction(chatId, prompt)
+        return "redirect:/chat/$chatId"
+    }
+
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<Void> {
+        return if (ex.message == "Chat not found") {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        } else {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).build()
+        }
+    }
+
+    @ExceptionHandler(ConstraintViolationException::class)
+    fun handleConstraintViolation(ex: ConstraintViolationException): ResponseEntity<String> =
+        ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ex.constraintViolations.joinToString { it.message })
 }

@@ -5,7 +5,7 @@ import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 
-enum class Role(name: String) {
+enum class Role(val role: String) {
     USER("user") {
         override fun getMessage(prompt: String): Message {
             return UserMessage(prompt)
