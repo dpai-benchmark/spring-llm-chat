@@ -9,5 +9,5 @@ class ChatEntry(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) val id: Long? = null,
     val content: String,
     @Enumerated(EnumType.STRING) val role: Role,
-    @CreationTimestamp private val createdAt: LocalDateTime? = null
+    @CreationTimestamp val createdAt: LocalDateTime? = null
 )

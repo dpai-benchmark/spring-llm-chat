@@ -8,6 +8,7 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
 @Service
 class ChatService(private val chatRepository: ChatRepository, private val chatClient: ChatClient) {
@@ -40,5 +41,27 @@ class ChatService(private val chatRepository: ChatRepository, private val chatCl
         val chat = getChat(chatId) ?: throw IllegalArgumentException("Chat not found")
         chat.addEntry(ChatEntry(content = prompt, role = user))
         chatRepository.save(chat)
+    }
+
+    @Transactional
+    fun processInteractionWithStreaming(chatId: String, prompt: String): SseEmitter {
+        addChatEntry(chatId, prompt, Role.USER)
+        val emitter = SseEmitter(0L)
+        val answer = StringBuilder()
+
+        chatClient.prompt().user(prompt).stream().chatResponse().subscribe(
+            { response ->
+                val token = response.result.output
+                emitter.send(token)
+                answer.append(token.text)
+            },
+            { error -> emitter.completeWithError(error) },
+            {
+                addChatEntry(chatId, answer.toString(), Role.ASSISTANT)
+                emitter.complete()
+            }
+        )
+
+        return emitter
     }
 }
