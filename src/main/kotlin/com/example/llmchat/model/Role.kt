@@ -25,8 +25,8 @@ enum class Role(val role: String) {
     abstract fun getMessage(prompt: String): Message
 
     companion object {
-        fun getRole(roleName: String): Role? {
-            return entries.firstOrNull { role: Role -> role.name == roleName }
+        fun getRole(roleName: String): Role {
+            return entries.firstOrNull { role: Role -> role.name == roleName } ?: throw IllegalArgumentException("Invalid role name: $roleName")
         }
     }
 }
