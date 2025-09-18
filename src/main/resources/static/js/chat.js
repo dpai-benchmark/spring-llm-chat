@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         const pathParts = window.location.pathname.split("/");
         const chatId = pathParts[pathParts.length - 1];
-        const url = `/chat-stream/${chatId}?userPrompt=${encodeURIComponent(prompt)}`;
+        const url = `/chat-stream/${chatId}?prompt=${encodeURIComponent(prompt)}`;
 
         const eventSource = new EventSource(url);
         let fullText = "";
