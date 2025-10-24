@@ -33,7 +33,7 @@ class ChatController(private val chatService: ChatService) {
     }
 
     @PostMapping("/chat")
-    fun newChat(@RequestParam title: String): String {
+    fun newChat(@RequestParam @NotBlank(message = "Chat title must not be empty") title: String): String {
         val chat = chatService.createChat(title)
         return "redirect:/chat/${chat.id}"
     }
