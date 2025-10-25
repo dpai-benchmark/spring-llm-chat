@@ -28,13 +28,17 @@ class ChatController(private val chatService: ChatService) {
     @GetMapping("/chat/{chatId}")
     fun showChat(@PathVariable chatId: String, model: ModelMap): String {
         model.addAttribute("chats", chatService.getAllChats())
-        model.addAttribute("chat", chatService.getChat(chatId))
+        val chat = chatService.getChat(chatId)
+        if (chat == null) {
+            throw IllegalArgumentException("Chat not found")
+        }
+        model.addAttribute("chat", chat)
         return "chat"
     }
 
     @PostMapping("/chat")
-    fun newChat(@RequestParam title: String): String {
-        val chat = chatService.createChat(title)
+    fun newChat(@RequestParam @NotBlank(message = "Chat title must not be empty") title: String): String {
+        val chat = chatService.createChat(title.trim())
         return "redirect:/chat/${chat.id}"
     }
 
@@ -44,12 +48,12 @@ class ChatController(private val chatService: ChatService) {
         return "redirect:/"
     }
 
-    @PostMapping("/chat/{chatId}/entry")
-    fun talkToModel(
+    @PostMapping("/chat/{chatId}/message")
+    fun addMessage(
         @PathVariable chatId: String,
-        @RequestParam @NotBlank(message = "Prompt must not be empty") prompt: String
+        @RequestParam @NotBlank(message = "Message must not be empty") content: String
     ): String {
-        chatService.processInteraction(chatId, prompt)
+        chatService.processInteraction(chatId, content)
         return "redirect:/chat/$chatId"
     }
 

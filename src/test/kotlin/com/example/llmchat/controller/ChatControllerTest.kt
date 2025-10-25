@@ -82,24 +82,24 @@ class ChatControllerTest {
     }
 
     @Test
-    fun `POST talkToModel redirects back to chat and invokes processInteraction`() {
+    fun `POST addMessage redirects back to chat and invokes processInteraction`() {
         val chatId = "123"
-        val prompt = "Hello model"
+        val content = "Hello model"
         val chat = Chat(id = 123L, title = "Test")
         `when`(chatService.getChat(chatId)).thenReturn(chat)
 
-        mockMvc.perform(post("/chat/{chatId}/entry", chatId).param("prompt", prompt))
+        mockMvc.perform(post("/chat/{chatId}/message", chatId).param("content", content))
             .andExpect(status().is3xxRedirection)
             .andExpect(redirectedUrl("/chat/$chatId"))
 
-        verify(chatService).processInteraction(chatId, prompt)
+        verify(chatService).processInteraction(chatId, content)
     }
 
     @Test
-    fun `POST talkToModel without prompt returns 400 Bad Request`() {
+    fun `POST addMessage without content returns 400 Bad Request`() {
         val chatId = "123"
 
-        mockMvc.perform(post("/chat/{chatId}/entry", chatId))
+        mockMvc.perform(post("/chat/{chatId}/message", chatId))
             .andExpect(status().isBadRequest)
     }
 }

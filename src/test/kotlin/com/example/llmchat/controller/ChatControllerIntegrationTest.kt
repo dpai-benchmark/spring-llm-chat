@@ -58,24 +58,24 @@ class ChatControllerIntegrationTest {
 
         // Act: call endpoint with prompt
         val prompt = "Hello model"
-        mockMvc.perform(post("/chat/{chatId}/entry", chatId.toString()).param("prompt", prompt))
+        mockMvc.perform(post("/chat/{chatId}/message", chatId.toString()).param("content", prompt))
             .andExpect(status().is3xxRedirection)
             .andExpect(redirectedUrl("/chat/${chatId}"))
 
         // Assert: reload chat and verify two entries added
         val reloaded = chatRepository.findById(chatId!!).orElseThrow()
-        assertEquals(2, reloaded.history.size, "Exactly two history entries should be created")
+        assertEquals(2, reloaded.messages.size, "Exactly two messages should be created")
         // Order should be: USER then ASSISTANT
-        assertEquals(Role.USER, reloaded.history[0].role)
-        assertEquals(prompt, reloaded.history[0].content)
-        assertEquals(Role.ASSISTANT, reloaded.history[1].role)
-        assertEquals("stubbed answer", reloaded.history[1].content)
+        assertEquals(Role.USER, reloaded.messages[0].role)
+        assertEquals(prompt, reloaded.messages[0].content)
+        assertEquals(Role.ASSISTANT, reloaded.messages[1].role)
+        assertEquals("stubbed answer", reloaded.messages[1].content)
     }
 
     @Test
     @Transactional
-    fun `POST talkToModel with nonexistent chatId returns 404`() {
-        mockMvc.perform(post("/chat/999/entry").param("prompt", "test"))
+    fun `POST addMessage with nonexistent chatId returns 404`() {
+        mockMvc.perform(post("/chat/999/message").param("content", "test"))
             .andExpect(status().isNotFound)
     }
 

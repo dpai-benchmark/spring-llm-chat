@@ -1,7 +1,7 @@
 package com.example.llmchat.service
 
 import com.example.llmchat.model.Chat
-import com.example.llmchat.model.ChatEntry
+import com.example.llmchat.model.Message
 import com.example.llmchat.model.Role
 import com.example.llmchat.repository.ChatRepository
 import org.springframework.ai.chat.client.ChatClient
@@ -22,28 +22,40 @@ class ChatService(
     }
 
     fun getChat(chatId: String): Chat? {
-        return chatRepository.findById(chatId.toLong()).orElse(null)
+        return try {
+            chatRepository.findById(chatId.toLong()).orElse(null)
+        } catch (e: NumberFormatException) {
+            null
+        }
     }
 
     fun createChat(title: String): Chat {
-        return chatRepository.save(Chat(title = title))
+        val trimmedTitle = title.trim()
+        if (trimmedTitle.isBlank()) {
+            throw IllegalArgumentException("Chat title cannot be empty")
+        }
+        return chatRepository.save(Chat(title = trimmedTitle))
     }
 
     fun deleteChat(chatId: String) {
-        chatRepository.deleteById(chatId.toLong())
+        try {
+            chatRepository.deleteById(chatId.toLong())
+        } catch (e: NumberFormatException) {
+            throw IllegalArgumentException("Invalid chat ID format")
+        }
     }
 
     @Transactional
     fun processInteraction(chatId: String, prompt: String) {
-        addChatEntry(chatId, prompt, Role.USER)
+        addMessage(chatId, prompt, Role.USER)
         val answer = chatClient.prompt().user(prompt).call().content() ?: "..."
-        addChatEntry(chatId, answer, Role.ASSISTANT)
+        addMessage(chatId, answer, Role.ASSISTANT)
     }
 
     @Transactional
-    fun addChatEntry(chatId: String, prompt: String, user: Role) {
+    fun addMessage(chatId: String, content: String, role: Role) {
         val chat = getChat(chatId) ?: throw IllegalArgumentException("Chat not found")
-        chat.addEntry(ChatEntry(content = prompt, role = user))
+        chat.addMessage(Message(content = content, role = role))
         chatRepository.save(chat)
     }
 
@@ -53,7 +65,7 @@ class ChatService(
         val answer = StringBuilder()
 
         // Save user prompt to database
-        addChatEntry(chatId, prompt, Role.USER)
+        addMessage(chatId, prompt, Role.USER)
 
         chatClient.prompt()
             .advisors {
@@ -72,7 +84,7 @@ class ChatService(
                 { 
                     // On completion, save the complete assistant response to database
                     if (answer.isNotEmpty()) {
-                        addChatEntry(chatId, answer.toString(), Role.ASSISTANT)
+                        addMessage(chatId, answer.toString(), Role.ASSISTANT)
                     }
                     emitter.complete()
                 }

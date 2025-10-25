@@ -70,7 +70,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
 
         // Verify initial state
         val initialChat = chatRepository.findById(testChat.id!!).get()
-        assertThat(initialChat.history).isEmpty()
+        assertThat(initialChat.messages).isEmpty()
 
         // Trigger SSE request (non-blocking; stream stays open). We don't wait for completion.
         val url = buildUrl("/chat-stream/$chatId", mapOf("prompt" to prompt))
@@ -80,7 +80,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
         try {
             waitUntilReturn(timeout = 25_000) {
                 val c = chatRepository.findById(testChat.id!!).get()
-                c.history.firstOrNull { it.role == Role.ASSISTANT }
+                c.messages.firstOrNull { it.role == Role.ASSISTANT }
             } != null
         } catch (_: AssertionError) {
         }
@@ -88,18 +88,18 @@ class StreamingChatControllerDatabaseIntegrationTest {
         val updatedChat = chatRepository.findById(testChat.id!!).get()
 
         // Verify user entry always saved
-        val userEntry = updatedChat.history.first { it.role == Role.USER }
+        val userEntry = updatedChat.messages.first { it.role == Role.USER }
         assertThat(userEntry.content).isEqualTo(prompt)
         assertThat(userEntry.role).isEqualTo(Role.USER)
-        assertThat(userEntry.createdAt).isNotNull()
+        assertThat(userEntry.sentAt).isNotNull()
 
         // Verify assistant entry if present
-        val assistantEntry = updatedChat.history.firstOrNull { it.role == Role.ASSISTANT }
+        val assistantEntry = updatedChat.messages.firstOrNull { it.role == Role.ASSISTANT }
         if (assistantEntry != null) {
             assertThat(assistantEntry.role).isEqualTo(Role.ASSISTANT)
             assertThat(assistantEntry.content).isNotBlank()
-            assertThat(assistantEntry.createdAt).isNotNull()
-            assertThat(assistantEntry.createdAt).isAfterOrEqualTo(userEntry.createdAt)
+            assertThat(assistantEntry.sentAt).isNotNull()
+            assertThat(assistantEntry.sentAt).isAfterOrEqualTo(userEntry.sentAt!!)
         }
     }
 
@@ -127,14 +127,14 @@ class StreamingChatControllerDatabaseIntegrationTest {
         // Wait for async processing: expect user entries for all prompts
         waitUntil(timeout = 10_000) {
             val c = chatRepository.findById(testChat.id!!).get()
-            c.history.count { it.role == Role.USER } >= prompts.size
+            c.messages.count { it.role == Role.USER } >= prompts.size
         }
 
         // Verify database state
         val updatedChat = chatRepository.findById(testChat.id!!).get()
 
         // Should have entries for all prompts (user + assistant for each successful request)
-        val userEntries = updatedChat.history.filter { it.role == Role.USER }
+        val userEntries = updatedChat.messages.filter { it.role == Role.USER }
         assertThat(userEntries).hasSize(prompts.size)
 
         // Verify all prompts are present
@@ -156,7 +156,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
                 // Wait for this prompt's USER entry to be persisted before next
                 waitUntil(timeout = 5_000) {
                     val c = chatRepository.findById(testChat.id!!).get()
-                    c.history.any { it.role == Role.USER && it.content == prompt }
+                    c.messages.any { it.role == Role.USER && it.content == prompt }
                 }
             } catch (_: Exception) {
                 // Continue with next request
@@ -166,11 +166,11 @@ class StreamingChatControllerDatabaseIntegrationTest {
         // Wait for at least both user entries to exist
         waitUntil(timeout = 5_000) {
             val c = chatRepository.findById(testChat.id!!).get()
-            c.history.count { it.role == Role.USER } >= 2
+            c.messages.count { it.role == Role.USER } >= 2
         }
 
         val updatedChat = chatRepository.findById(testChat.id!!).get()
-        val entries = updatedChat.history.sortedBy { it.createdAt }
+        val entries = updatedChat.messages.sortedBy { it.sentAt }
 
         // Verify order: USER1, ASSISTANT1, USER2, ASSISTANT2
         assertThat(entries.size).isGreaterThanOrEqualTo(2) // At least user entries
@@ -179,7 +179,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
         assertThat(userEntries).hasSize(2)
         assertThat(userEntries[0].content).isEqualTo("First question")
         assertThat(userEntries[1].content).isEqualTo("Second question")
-        assertThat(userEntries[1].createdAt).isAfter(userEntries[0].createdAt)
+        assertThat(userEntries[1].sentAt).isAfter(userEntries[0].sentAt!!)
     }
 
     @Test
@@ -201,7 +201,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
         assertThat(response.statusCode()).isIn(400, 404, 500)
 
         // Verify no data was created
-        val totalEntries = chatRepository.findAll().sumOf { it.history.size }
+        val totalEntries = chatRepository.findAll().sumOf { it.messages.size }
         assertThat(totalEntries).isZero()
     }
 

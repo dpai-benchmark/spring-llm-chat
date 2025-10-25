@@ -22,10 +22,10 @@ class Chat(
         orphanRemoval = true
     )
     @JoinColumn(name = "chat_id")
-    val history: MutableList<ChatEntry> = mutableListOf()
+    val messages: MutableList<Message> = mutableListOf()
 ){
-    fun addEntry(entry: ChatEntry){
-        history.add(entry)
+    fun addMessage(message: Message){
+        messages.add(message)
     }
 
 }

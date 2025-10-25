@@ -44,21 +44,21 @@
 
         <div class="messages" id="messages">
             <th:block th:if="${chat != null}">
-                <div th:if="${!#lists.isEmpty(chat.history)}" th:each="entry : ${chat.history}"
-                     th:class="${entry.role.role eq 'user'} ? 'message user' : 'message mentor'"><img
-                        th:src="${entry.role.role eq 'user'} ? '/images/user.jpeg' : '/images/mentor.jpeg'"
+                <div th:if="${!#lists.isEmpty(chat.messages)}" th:each="message : ${chat.messages}"
+                     th:class="${message.role.role eq 'user'} ? 'message user' : 'message mentor'"><img
+                        th:src="${message.role.role eq 'user'} ? '/images/user.jpeg' : '/images/mentor.jpeg'"
                         alt="avatar">
-                    <div class="bubble" th:text="${entry.content}"></div>
+                    <div class="bubble" th:text="${message.content}"></div>
                 </div>
             </th:block>
         </div>
 
         <div th:if="${chat != null}">
-            <div class="input-bubble">
+            <form th:action="@{/chat/{id}/message(id=${chat.id})}" method="post" class="input-bubble">
                 <label for="chat-input" class="sr-only">Ask</label>
-                <textarea id="chat-input" name="prompt" placeholder="Ask..." required></textarea>
-                <button type="button" id="send-button">SEND</button>
-            </div>
+                <textarea id="chat-input" name="content" placeholder="Ask..." required></textarea>
+                <button type="submit" id="send-button">SEND</button>
+            </form>
         </div>
     </main>
 </div>
