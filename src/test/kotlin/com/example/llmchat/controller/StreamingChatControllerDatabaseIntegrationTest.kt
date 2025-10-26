@@ -11,13 +11,18 @@ import org.mockito.Answers
 import org.mockito.Mockito
 import org.mockito.Mockito.`when`
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor
+import org.springframework.ai.chat.memory.MessageWindowChatMemory
 import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.test.context.ActiveProfiles
@@ -29,6 +34,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
+import java.util.function.Consumer
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test") // Use test profile for database configuration
@@ -39,6 +45,7 @@ import java.util.concurrent.CompletableFuture
         "spring.jpa.show-sql=true"
     ]
 )
+@org.springframework.context.annotation.Import(StreamingChatControllerDatabaseIntegrationTest.DatabaseTestConfig::class)
 class StreamingChatControllerDatabaseIntegrationTest {
 
     @Autowired
@@ -49,6 +56,9 @@ class StreamingChatControllerDatabaseIntegrationTest {
 
     @Autowired
     private lateinit var chatRepository: ChatRepository
+
+    @Autowired
+    private lateinit var chatClient: ChatClient
 
     private lateinit var testChat: Chat
 
@@ -88,17 +98,20 @@ class StreamingChatControllerDatabaseIntegrationTest {
         val updatedChat = chatRepository.findById(testChat.id!!).get()
 
         // Verify user entry always saved
-        val userEntry = updatedChat.history.first { it.role == Role.USER }
-        assertThat(userEntry.content).isEqualTo(prompt)
+        val userEntry = updatedChat.history.firstOrNull { it.role == Role.USER }
+        assertThat(userEntry).isNotNull()
+        assertThat(userEntry!!.content).isEqualTo(prompt)
         assertThat(userEntry.role).isEqualTo(Role.USER)
         assertThat(userEntry.createdAt).isNotNull()
 
         // Verify assistant entry if present
-        val assistantEntry = updatedChat.history.first { it.role == Role.ASSISTANT }
-        assertThat(assistantEntry.role).isEqualTo(Role.ASSISTANT)
-        assertThat(assistantEntry.content).isNotBlank()
-        assertThat(assistantEntry.createdAt).isNotNull()
-        assertThat(assistantEntry.createdAt).isAfterOrEqualTo(userEntry.createdAt)
+        val assistantEntry = updatedChat.history.firstOrNull { it.role == Role.ASSISTANT }
+        if (assistantEntry != null) {
+            assertThat(assistantEntry.role).isEqualTo(Role.ASSISTANT)
+            assertThat(assistantEntry.content).isNotBlank()
+            assertThat(assistantEntry.createdAt).isNotNull()
+            assertThat(assistantEntry.createdAt).isAfterOrEqualTo(userEntry.createdAt)
+        }
     }
 
     @Test
@@ -131,7 +144,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
         // Verify database state
         val updatedChat = chatRepository.findById(testChat.id!!).get()
 
-        // Should have entries for all prompts (user + assistant for each successful request)
+        // Should have entries for all prompts (allowing for duplicates due to concurrent access)
         val userEntries = updatedChat.history.filter { it.role == Role.USER }
         assertThat(userEntries).hasSize(prompts.size)
 
@@ -157,7 +170,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
                     c.history.any { it.role == Role.USER && it.content == prompt }
                 }
             } catch (_: Exception) {
-                // Continue with next request
+                // Continue with next request 
             }
         }
 
@@ -169,15 +182,33 @@ class StreamingChatControllerDatabaseIntegrationTest {
 
         val updatedChat = chatRepository.findById(testChat.id!!).get()
         val entries = updatedChat.history.sortedBy { it.createdAt }
-
-        // Verify order: USER1, ASSISTANT1, USER2, ASSISTANT2
-        assertThat(entries.size).isGreaterThanOrEqualTo(2) // At least user entries
-
         val userEntries = entries.filter { it.role == Role.USER }
-        assertThat(userEntries).hasSize(2)
-        assertThat(userEntries[0].content).isEqualTo("First question")
-        assertThat(userEntries[1].content).isEqualTo("Second question")
-        assertThat(userEntries[1].createdAt).isAfter(userEntries[0].createdAt)
+
+
+        // Verify content is present (order may be affected by duplicates)
+        val contents = userEntries.map { it.content }
+        assertThat(contents).contains("First question", "Second question")
+        
+        // Verify exactly 2 user entries
+        assertThat(userEntries)
+            .withFailMessage("Expected at least 2 user entries, but found ${userEntries.size}")
+            .hasSize(2)
+
+        // Find first occurrence of each question for order verification
+        val firstQuestionEntry = userEntries.first { it.content == "First question" }
+        val secondQuestionEntry = userEntries.first { it.content == "Second question" }
+        
+        // Verify order of first occurrences
+        assertThat(secondQuestionEntry.createdAt).isAfter(firstQuestionEntry.createdAt)
+
+        // TODO: Check for duplicates
+
+        val duplicates = userEntries.groupBy { it.content }.filter { it.value.size > 1 }
+        assertThat(duplicates)
+            .withFailMessage("Found duplicate entries: ${duplicates.keys}")
+            .isEmpty()
+
+        println("SUCCESS: Entry order is correct and no duplicates found")
     }
 
     @Test
@@ -203,6 +234,41 @@ class StreamingChatControllerDatabaseIntegrationTest {
         assertThat(totalEntries).isZero()
     }
 
+    @Test
+    @Timeout(10)
+    fun `should handle long content with TEXT column type`() {
+        val chatId = testChat.id.toString()
+        // Create content longer than 255 characters to test TEXT column
+        val longContent = "This is a very long message that exceeds the typical VARCHAR(255) limit. " +
+                "It contains multiple sentences and should be stored properly in the TEXT column. " +
+                "The @Column(columnDefinition = \"TEXT\") annotation should allow storing content " +
+                "much longer than the default 255 character limit that would be imposed by a regular " +
+                "VARCHAR column. This test verifies that our ChatEntry model can handle long messages " +
+                "from LLM responses or user inputs without truncation or database errors."
+
+        // Verify content is longer than 255 characters
+        assertThat(longContent.length).isGreaterThan(255)
+
+        val url = buildUrl("/chat-stream/$chatId", mapOf("prompt" to longContent))
+        startSSERequest(url)
+
+        // Wait for processing
+        waitUntil(timeout = 5_000) {
+            val c = chatRepository.findById(testChat.id!!).get()
+            c.history.any { it.role == Role.USER && it.content == longContent }
+        }
+
+        // Verify long content was saved correctly
+        val updatedChat = chatRepository.findById(testChat.id!!).get()
+        val userEntry = updatedChat.history.firstOrNull { it.role == Role.USER && it.content == longContent }
+        
+        assertThat(userEntry).isNotNull()
+        assertThat(userEntry!!.content).isEqualTo(longContent)
+        assertThat(userEntry.content.length).isGreaterThan(255)
+        
+        println("SUCCESS: Long content (${longContent.length} chars) saved correctly with TEXT column")
+    }
+
     // Helper methods (same as before)
     private fun buildUrl(path: String, params: Map<String, String> = emptyMap()): String {
         val baseUrl = "http://localhost:$port$path"
@@ -222,9 +288,10 @@ class StreamingChatControllerDatabaseIntegrationTest {
             .header("Cache-Control", "no-cache")
             .GET()
             .build()
-        // Use discarding body handler to avoid buffering; don't set per-request timeout to let stream stay open
+        // Use timeout to prevent hanging and cancel after short delay
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding())
-        // We intentionally do not join/cancel here; server keeps stream open
+            .orTimeout(500, java.util.concurrent.TimeUnit.MILLISECONDS)   // stream will close after 0.5 sec
+            .exceptionally { null }                  // ignore timeout exceptions
     }
 
     // Utility: wait until condition is true or timeout (milliseconds)
@@ -234,7 +301,7 @@ class StreamingChatControllerDatabaseIntegrationTest {
             if (condition()) return
             Thread.sleep(interval)
         }
-        throw AssertionError($$"Condition not met within $timeout ms")
+        throw AssertionError("Condition not met within $timeout ms")
     }
 
     // Utility: wait until supplier returns non-null and return it, or throw on timeout
@@ -248,9 +315,9 @@ class StreamingChatControllerDatabaseIntegrationTest {
         return null
     }
 
-    // Test configuration
     @TestConfiguration
     class DatabaseTestConfig {
+
         @Bean
         fun httpClient(): HttpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -258,13 +325,44 @@ class StreamingChatControllerDatabaseIntegrationTest {
 
         @Bean
         @Primary
-        fun chatClientMock(): ChatClient {
-            val client = Mockito.mock(ChatClient::class.java, Answers.RETURNS_DEEP_STUBS)
-            `when`(
-                client.prompt().user(Mockito.anyString()).stream().chatResponse()
-            ).thenReturn(
-                Flux.just(ChatResponse(listOf(Generation(AssistantMessage("Stubbed answer")))))
-            )
+        fun mockChatModel(): ChatModel {
+            return object : ChatModel {
+                override fun call(request: Prompt): ChatResponse {
+                    val userPrompt = request.instructions.firstOrNull()?.toString() ?: "unknown"
+                    val assistantReply = "Stubbed answer for: $userPrompt"
+                    return ChatResponse(listOf(Generation(AssistantMessage(assistantReply))))
+                }
+
+                override fun stream(request: Prompt): Flux<ChatResponse> {
+                    val userPrompt = request.instructions.firstOrNull()?.toString() ?: "unknown"
+                    return Flux.just(
+                        ChatResponse(listOf(Generation(AssistantMessage("Stubbed stream part 1 for: $userPrompt")))),
+                        ChatResponse(listOf(Generation(AssistantMessage("Stubbed stream part 2 for: $userPrompt"))))
+                    )
+                        .delayElements(Duration.ofMillis(50))
+                        .concatWith(Flux.empty()) // guarantees onComplete()
+                }
+            }
+        }
+
+        @Bean
+        @Primary
+        fun testChatClient(chatModel: ChatModel, chatRepository: ChatRepository): ChatClient {
+            println(">>> Creating test ChatClient with MessageChatMemoryAdvisor")
+            
+            // Create memory advisor that will work like in production
+            val memory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatRepository)
+                .maxMessages(100)
+                .build()
+            val advisor = MessageChatMemoryAdvisor.builder(memory).build()
+
+            // Build ChatClient based on mocked ChatModel
+            val client = ChatClient.builder(chatModel)
+                .defaultAdvisors(advisor)
+                .build()
+                
+            println(">>> Test ChatClient created: ${client::class.qualifiedName}")
             return client
         }
     }

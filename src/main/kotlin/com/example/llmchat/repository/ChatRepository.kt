@@ -12,9 +12,10 @@ interface ChatRepository : JpaRepository<Chat, Long>, ChatMemoryRepository {
         conversationId: String,
         messages: List<Message>
     ) {
-        val chat = findById(conversationId.toLong()).orElse(null) ?: throw IllegalArgumentException("Chat not found")
+        val id = conversationId.toLongOrNull() ?: throw IllegalArgumentException("Invalid conversation ID format: $conversationId")
+        val chat = findById(id).orElse(null) ?: throw IllegalArgumentException("Chat not found")
         messages.forEach { message ->
-            chat.addEntry(ChatEntry.fromMessage(message))
+            chat.addEntry(ChatEntry.fromMessage(message, chat))
         }
         save(chat)
     }
@@ -23,10 +24,13 @@ interface ChatRepository : JpaRepository<Chat, Long>, ChatMemoryRepository {
 
 
     override fun findByConversationId(conversationId: String): List<Message> {
-        return findById(conversationId.toLong()).orElse(null)?.history?.map { it.toMessage() }
+        val id = conversationId.toLongOrNull() ?: throw IllegalArgumentException("Invalid conversation ID format: $conversationId")
+        return findById(id).orElse(null)?.history?.map { it.toMessage() }
             ?: throw IllegalArgumentException("Chat not found")
     }
 
     override fun deleteByConversationId(conversationId: String) {
+        val id = conversationId.toLongOrNull() ?: throw IllegalArgumentException("Invalid conversation ID format: $conversationId")
+        deleteById(id)
     }
 }

@@ -22,7 +22,8 @@ class ChatService(
     }
 
     fun getChat(chatId: String): Chat? {
-        return chatRepository.findById(chatId.toLong()).orElse(null)
+        val id = chatId.toLongOrNull() ?: throw IllegalArgumentException("Invalid chat ID format: $chatId")
+        return chatRepository.findById(id).orElse(null)
     }
 
     fun createChat(title: String): Chat {
@@ -30,7 +31,8 @@ class ChatService(
     }
 
     fun deleteChat(chatId: String) {
-        chatRepository.deleteById(chatId.toLong())
+        val id = chatId.toLongOrNull() ?: throw IllegalArgumentException("Invalid chat ID format: $chatId")
+        chatRepository.deleteById(id)
     }
 
     @Transactional
@@ -43,28 +45,31 @@ class ChatService(
     @Transactional
     fun addChatEntry(chatId: String, prompt: String, user: Role) {
         val chat = getChat(chatId) ?: throw IllegalArgumentException("Chat not found")
-        chat.addEntry(ChatEntry(content = prompt, role = user))
+        chat.addEntry(ChatEntry(content = prompt, role = user, chat = chat))
         chatRepository.save(chat)
     }
 
     @Transactional
     fun processInteractionWithStreaming(chatId: String, prompt: String): SseEmitter {
         val emitter = SseEmitter(0L)
-        val answer = StringBuilder()
 
         chatClient.prompt()
             .advisors {
                 advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, chatId)
             }
             .user(prompt)
-            .stream().chatResponse().subscribe(
-                { response ->
-                    val token = response.result.output
-                    emitter.send(token)
-                    answer.append(token.text)
-                },
-                { error -> emitter.completeWithError(error) }
-            )
+            .stream().chatResponse()
+            .doOnNext { response ->
+                val token = response.result.output
+                emitter.send(token)
+            }
+            .doOnComplete {
+                emitter.complete()
+            }
+            .doOnError { error ->
+                emitter.completeWithError(error)
+            }
+            .subscribe()
 
         return emitter
     }
