@@ -14,7 +14,5 @@ class LlmChatExampleApplication {
 }
 
 fun main(args: Array<String>) {
-    val context = runApplication<LlmChatExampleApplication>(*args)
-    val chatClient = context.getBean(ChatClient::class.java)
-    println(chatClient.prompt().user("give me the first line of song Bohemian Rhapsody").call().content())
+    runApplication<LlmChatExampleApplication>(*args)
 }
