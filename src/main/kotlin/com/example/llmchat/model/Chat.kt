@@ -16,7 +16,6 @@ class Chat (
     @Column(name = "createdAt", updatable = false, nullable = false)
     var createdAt: Instant = Instant.now(),
 
-    @Column(name = "history")
     @OneToMany(cascade = [CascadeType.ALL], mappedBy = "chat", fetch = FetchType.EAGER)
     var history: MutableList<ChatEntity> = mutableListOf(),
 )

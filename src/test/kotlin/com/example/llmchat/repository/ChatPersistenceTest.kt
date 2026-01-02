@@ -24,8 +24,8 @@ class ChatPersistenceTest @Autowired constructor(
     @Test
     fun whenCorrectDataPassedThenItIsPersistedCorrectly() {
         val chat = Chat(title = "first_chat")
-        chat.history.add(ChatEntity(role = Role.USER, createdAt = Instant.now(), chat = chat))
-        chat.history.add(ChatEntity(role = Role.ASSISTANT, createdAt = Instant.now(), chat = chat))
+        chat.history.add(ChatEntity(role = Role.USER, createdAt = Instant.now(), chat = chat, content = "Hello!"))
+        chat.history.add(ChatEntity(role = Role.ASSISTANT, createdAt = Instant.now(), chat = chat, content = "Hello, world!"))
 
         val savedChat = repository.saveAndFlush(chat)
         assertNotNull(savedChat.id)

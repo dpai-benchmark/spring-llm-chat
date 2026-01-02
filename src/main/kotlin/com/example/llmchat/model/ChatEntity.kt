@@ -25,6 +25,9 @@ class ChatEntity(
     @Column(name = "role")
     var role: Role,
 
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    var content: String,
+
     @Column(name = "createdAt")
     var createdAt: Instant = Instant.now(),
 
