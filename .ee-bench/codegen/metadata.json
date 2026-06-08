@@ -5,7 +5,9 @@
   "jvm_version": "21",
   "build_system": "gradle-kotlin",
   "expected": {
-    "fail_to_pass": [],
+    "fail_to_pass": [
+      "com.example.llmchat.integration.ChatEntryApiIntegrationTest"
+    ],
     "pass_to_pass": []
   },
   "environment": {
