@@ -2,7 +2,7 @@
   "version": "1.0",
   "benchmark_type": "codegen",
   "language": "kotlin",
-  "jvm_version": "24",
+  "jvm_version": "21",
   "build_system": "gradle-kotlin",
   "expected": {
     "fail_to_pass": [],
