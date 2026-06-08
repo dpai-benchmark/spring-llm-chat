@@ -5,7 +5,10 @@
   "jvm_version": "21",
   "build_system": "gradle-kotlin",
   "expected": {
-    "fail_to_pass": [],
+    "fail_to_pass": [
+      "com.example.llmchat.model.RoleTest",
+      "com.example.llmchat.repository.ChatPersistenceTest"
+    ],
     "pass_to_pass": []
   },
   "environment": {
